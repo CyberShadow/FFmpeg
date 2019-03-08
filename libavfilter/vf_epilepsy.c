@@ -41,6 +41,7 @@ typedef struct EpilepsyContext {
 
     int nb_frames;
     float threshold_multiplier;
+    float blend_factor;
 
     int badness_threshold;
 
@@ -57,10 +58,12 @@ typedef struct EpilepsyContext {
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption epilepsy_options[] = {
-    { "frames",    "set how many frames to use"      ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5}, 2, MAX_FRAMES, FLAGS },
-    { "f",         "set how many frames to use"      ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5}, 2, MAX_FRAMES, FLAGS },
-    { "threshold", "detection threshold"             ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1}, 0, FLT_MAX   , FLAGS },
-    { "t"        , "detection threshold"             ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1}, 0, FLT_MAX   , FLAGS },
+    { "frames",    "set how many frames to use"       ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5  }, 2, MAX_FRAMES, FLAGS },
+    { "f",         "set how many frames to use"       ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5  }, 2, MAX_FRAMES, FLAGS },
+    { "threshold", "detection threshold"              ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1  }, 0, FLT_MAX   , FLAGS },
+    { "t"        , "detection threshold"              ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1  }, 0, FLT_MAX   , FLAGS },
+    { "blend"    , "blend factor (0 = use last frame)",  OFFSET(blend_factor        ), AV_OPT_TYPE_FLOAT, {.dbl=0.1}, 0, 1         , FLAGS },
+    { "b"        , "blend factor (0 = use last frame)",  OFFSET(blend_factor        ), AV_OPT_TYPE_FLOAT, {.dbl=0.1}, 0, 1         , FLAGS },
     { NULL }
 };
 
@@ -103,6 +106,23 @@ static void convert_frame(AVFrame *in, EpilepsyFrame* out)
                     sum /= (y1 - y0) * (x1 - x0);
                 out->grid[gy][gx][c] = sum;
             }
+        }
+    }
+}
+
+static void blend_frame(AVFrame *target, AVFrame *source, float factor)
+{
+    int x, y;
+    uint8_t *t, *s;
+    const uint16_t s_mul = (uint16_t)(factor * 0x100);
+    const uint16_t t_mul = 0x100 - s_mul;
+
+    for (y = 0; y < target->height; y++) {
+        t = target->data[0] + y * target->linesize[0];
+        s = source->data[0] + y * source->linesize[0];
+        for (x = 0; x < target->linesize[0]; x++) {
+            *t = (*t * t_mul + *s * s_mul) >> 8;
+            t++; s++;
         }
     }
 }
@@ -364,8 +384,33 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         s->history[s->history_pos] = this_badness;
         s->current_badness = new_badness;
     } else {
+        if (s->blend_factor == 0) {
+            s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
+        } else {
+            if (!av_frame_is_writable(s->last_frame_av)) {
+                src = av_frame_clone(out);
+                if (!src) {
+                    av_frame_free(&in);
+                    av_frame_free(&out);
+                    return AVERROR(ENOMEM);
+                }
+                av_frame_copy_props(src, s->last_frame_av);
+                av_frame_copy(src, s->last_frame_av);
+                av_frame_free(&s->last_frame_av);
+                s->last_frame_av = src;
+            }
+            blend_frame(s->last_frame_av, in, s->blend_factor);
+
+            convert_frame(s->last_frame_av, &ef);
+            this_badness = get_badness(&ef, &s->last_frame_e);
+            new_badness = s->current_badness + this_badness;
+            av_log(s, AV_LOG_INFO, "  fixed: %6d/%6d (%s)                                                     \n",
+                new_badness, s->badness_threshold, new_badness < s->badness_threshold ? "FIXED" : "STILL EXCEEDED");
+            s->last_frame_e = ef;
+            s->history[s->history_pos] = this_badness;
+            s->current_badness = new_badness;
+        }
         src = s->last_frame_av;
-        s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
     }
     s->history_pos = (s->history_pos + 1) % s->nb_frames;
     
