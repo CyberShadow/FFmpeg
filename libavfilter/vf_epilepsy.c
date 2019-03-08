@@ -48,7 +48,6 @@ typedef struct EpilepsyContext {
     /* Circular buffer */
     int history[MAX_FRAMES];
     int history_pos;
-    int current_badness;
 
     EpilepsyFrame last_frame_e;
     AVFrame *last_frame_av;
@@ -346,14 +345,14 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     EpilepsyContext *s = ctx->priv;
 
-    s->badness_threshold = (int)(GRID_SIZE * GRID_SIZE * 4 * 256 * s->nb_frames * s->threshold_multiplier / 16);
+    s->badness_threshold = (int)(GRID_SIZE * GRID_SIZE * 4 * 256 * s->nb_frames * s->threshold_multiplier / 32);
 
     return 0;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
-    int this_badness, new_badness;
+    int this_badness, current_badness, new_badness, i;
     EpilepsyFrame ef;
     AVFrame *src;
     float factor;
@@ -367,14 +366,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return AVERROR(ENOMEM);
     }
 
-    /* Pop last frame from history */
-    s->current_badness -= s->history[s->history_pos];
+    /* weighted moving average */
+    current_badness = 0;
+    for (i = 1; i < s->nb_frames; i++)
+        current_badness += i * s->history[(s->history_pos + i) % s->nb_frames];
+    current_badness /= s->nb_frames;
 
     convert_frame(in, &ef);
     this_badness = get_badness(&ef, &s->last_frame_e);
-    new_badness = s->current_badness + this_badness;
+    new_badness = current_badness + this_badness;
     av_log(s, AV_LOG_INFO, "badness: %6d -> %6d / %6d (%s)                                                     \n",
-        s->current_badness, new_badness, s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
+        current_badness, new_badness, s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
     if (new_badness < s->badness_threshold || !s->last_frame_av) {
         if (s->last_frame_av) {
@@ -383,7 +385,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         s->last_frame_av = src = in;
         s->last_frame_e = ef;
         s->history[s->history_pos] = this_badness;
-        s->current_badness = new_badness;
     } else {
         if (s->blend_factor == 0) {
             s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
@@ -400,17 +401,16 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 av_frame_free(&s->last_frame_av);
                 s->last_frame_av = src;
             }
-            factor = (float)(s->badness_threshold - s->current_badness) / (new_badness - s->current_badness);
+            factor = (float)(s->badness_threshold - current_badness) / (new_badness - current_badness);
             blend_frame(s->last_frame_av, in, factor);
 
             convert_frame(s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
-            new_badness = s->current_badness + this_badness;
+            new_badness = current_badness + this_badness;
             av_log(s, AV_LOG_INFO, "  fixed: %6d -> %6d / %6d (%s)                                                     \n",
-                s->current_badness, new_badness, s->badness_threshold, new_badness < s->badness_threshold ? "FIXED" : "STILL EXCEEDED");
+                current_badness, new_badness, s->badness_threshold, new_badness < s->badness_threshold ? "FIXED" : "STILL EXCEEDED");
             s->last_frame_e = ef;
             s->history[s->history_pos] = this_badness;
-            s->current_badness = new_badness;
         }
         src = s->last_frame_av;
     }
