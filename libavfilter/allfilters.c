@@ -187,6 +187,7 @@ extern AVFilter ff_vf_deconvolve;
 extern AVFilter ff_vf_dedot;
 extern AVFilter ff_vf_deflate;
 extern AVFilter ff_vf_deflicker;
+extern AVFilter ff_vf_epilepsy;
 extern AVFilter ff_vf_deinterlace_qsv;
 extern AVFilter ff_vf_deinterlace_vaapi;
 extern AVFilter ff_vf_dejudder;
