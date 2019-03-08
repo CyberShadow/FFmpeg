@@ -170,9 +170,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     convert_frame(in, &ef);
     this_badness = get_badness(&ef, &s->last_frame_e);
     new_badness = current_badness + this_badness;
-    av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%+6d - %s)                                                     \n",
+    av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%3d%% - %s)                                                     \n",
         current_badness, new_badness, s->badness_threshold,
-        new_badness - s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
+        100 * new_badness / s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
     if (new_badness < s->badness_threshold || !s->last_frame_av) {
         if (s->last_frame_av) {
@@ -197,9 +197,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             convert_frame(s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
             new_badness = current_badness + this_badness;
-            av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%+6d) factor=%5.3f                                                     \n",
+            av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%3d%%) factor=%5.3f                                                     \n",
                 current_badness, new_badness, s->badness_threshold,
-                new_badness - s->badness_threshold, factor);
+                100 * new_badness / s->badness_threshold, factor);
             s->last_frame_e = ef;
             s->history[s->history_pos] = this_badness;
         }
