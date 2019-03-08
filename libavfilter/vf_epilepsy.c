@@ -351,17 +351,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     int this_badness, current_badness, new_badness, i, res;
     EpilepsyFrame ef;
-    AVFrame *src;
+    AVFrame *src, *out;
     float factor;
 
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     EpilepsyContext *s = ctx->priv;
-    AVFrame *out = ff_get_video_buffer(outlink, in->width, in->height);
-    if (!out) {
-        av_frame_free(&in);
-        return AVERROR(ENOMEM);
-    }
 
     /* weighted moving average */
     current_badness = 0;
@@ -392,7 +387,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             res = av_frame_make_writable(s->last_frame_av);
             if (res) {
                 av_frame_free(&in);
-                av_frame_free(&out);
                 return res;
             }
             blend_frame(s->last_frame_av, in, factor);
@@ -409,7 +403,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         src = s->last_frame_av;
     }
     s->history_pos = (s->history_pos + 1) % s->nb_frames;
-    
+
+    out = ff_get_video_buffer(outlink, in->width, in->height);
+    if (!out) {
+        av_frame_free(&in);
+        return AVERROR(ENOMEM);
+    }
     av_frame_copy_props(out, in);
     av_frame_copy(out, src);
     return ff_filter_frame(outlink, out);
