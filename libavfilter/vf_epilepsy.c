@@ -41,7 +41,6 @@ typedef struct EpilepsyContext {
 
     int nb_frames;
     float threshold_multiplier;
-    float blend_factor;
 
     int badness_threshold;
 
@@ -61,8 +60,6 @@ static const AVOption epilepsy_options[] = {
     { "f",         "set how many frames to use"       ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5  }, 2, MAX_FRAMES, FLAGS },
     { "threshold", "detection threshold"              ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1  }, 0, FLT_MAX   , FLAGS },
     { "t"        , "detection threshold"              ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1  }, 0, FLT_MAX   , FLAGS },
-    { "blend"    , "blend factor (0 = use last frame)",  OFFSET(blend_factor        ), AV_OPT_TYPE_FLOAT, {.dbl=0.1}, 0, 1         , FLAGS },
-    { "b"        , "blend factor (0 = use last frame)",  OFFSET(blend_factor        ), AV_OPT_TYPE_FLOAT, {.dbl=0.1}, 0, 1         , FLAGS },
     { NULL }
 };
 
@@ -386,7 +383,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         s->last_frame_e = ef;
         s->history[s->history_pos] = this_badness;
     } else {
-        if (s->blend_factor == 0) {
+        factor = (float)(s->badness_threshold - current_badness) / (new_badness - current_badness);
+        if (factor <= 0) {
+            /* just duplicate the frame */
             s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
         } else {
             if (!av_frame_is_writable(s->last_frame_av)) {
@@ -401,7 +400,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 av_frame_free(&s->last_frame_av);
                 s->last_frame_av = src;
             }
-            factor = (float)(s->badness_threshold - current_badness) / (new_badness - current_badness);
             blend_frame(s->last_frame_av, in, factor);
 
             convert_frame(s->last_frame_av, &ef);
