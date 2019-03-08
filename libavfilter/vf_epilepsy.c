@@ -94,7 +94,7 @@ static void convert_frame(AVFrame *in, EpilepsyFrame* out)
                 for (y = y0; y < y1; y++) {
                     row = in->data[0] + y * in->linesize[0];
                     for (x = x0; x < x1; x++) {
-                        //av_log(NULL, AV_LOG_INFO, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
+                        //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
                         sum += row[x * 3 + c]; // TODO: variable size
                     }
                 }
@@ -131,8 +131,8 @@ static int get_badness(EpilepsyFrame* a, EpilepsyFrame* b)
         for (y = 0; y < GRID_SIZE; y++) {
             for (x = 0; x < GRID_SIZE; x++) {
                 badness += abs((int)a->grid[y][x][c] - (int)b->grid[y][x][c]);
-                //av_log(NULL, AV_LOG_INFO, "%d - %d -> %d \n", a->grid[y][x], b->grid[y][x], badness);
-                //av_log(NULL, AV_LOG_INFO, "%d -> %d \n", abs((int)a->grid[y][x] - (int)b->grid[y][x]), badness);
+                //av_log(NULL, AV_LOG_VERBOSE, "%d - %d -> %d \n", a->grid[y][x], b->grid[y][x], badness);
+                //av_log(NULL, AV_LOG_VERBOSE, "%d -> %d \n", abs((int)a->grid[y][x] - (int)b->grid[y][x]), badness);
             }
         }
     }
@@ -372,7 +372,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     convert_frame(in, &ef);
     this_badness = get_badness(&ef, &s->last_frame_e);
     new_badness = current_badness + this_badness;
-    av_log(s, AV_LOG_INFO, "badness: %6d -> %6d / %6d (%+6d - %s)                                                     \n",
+    av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%+6d - %s)                                                     \n",
         current_badness, new_badness, s->badness_threshold,
         new_badness - s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
@@ -400,7 +400,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             convert_frame(s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
             new_badness = current_badness + this_badness;
-            av_log(s, AV_LOG_INFO, "  fixed: %6d -> %6d / %6d (%+6d - %s)                                                     \n",
+            av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%+6d - %s)                                                     \n",
                 current_badness, new_badness, s->badness_threshold,
                 new_badness - s->badness_threshold, new_badness < s->badness_threshold ? "FIXED" : "STILL EXCEEDED");
             s->last_frame_e = ef;
