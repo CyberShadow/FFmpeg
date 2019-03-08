@@ -414,7 +414,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
     s->history_pos = (s->history_pos + 1) % s->nb_frames;
     
-    av_frame_copy_props(out, src);
+    av_frame_copy_props(out, in);
     av_frame_copy(out, src);
     return ff_filter_frame(outlink, out);
 }
