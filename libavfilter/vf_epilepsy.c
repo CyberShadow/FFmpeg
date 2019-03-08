@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <float.h>
+
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -38,6 +40,8 @@ typedef struct EpilepsyContext {
     const AVClass *class;
 
     int nb_frames;
+    float threshold_multiplier;
+
     int badness_threshold;
 
     /* Circular buffer */
@@ -53,8 +57,10 @@ typedef struct EpilepsyContext {
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption epilepsy_options[] = {
-    { "frames", "set how many frames to use",  OFFSET(nb_frames), AV_OPT_TYPE_INT, {.i64=5}, 2, MAX_FRAMES, FLAGS },
-    { "f",      "set how many frames to use",  OFFSET(nb_frames), AV_OPT_TYPE_INT, {.i64=5}, 2, MAX_FRAMES, FLAGS },
+    { "frames",    "set how many frames to use"      ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5}, 2, MAX_FRAMES, FLAGS },
+    { "f",         "set how many frames to use"      ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=5}, 2, MAX_FRAMES, FLAGS },
+    { "threshold", "detection threshold"             ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1}, 0, FLT_MAX   , FLAGS },
+    { "t"        , "detection threshold"             ,  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl=1}, 0, FLT_MAX   , FLAGS },
     { NULL }
 };
 
@@ -320,7 +326,7 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     EpilepsyContext *s = ctx->priv;
 
-    s->badness_threshold = GRID_SIZE * GRID_SIZE * 4 * 256 * s->nb_frames / 16;
+    s->badness_threshold = (int)(GRID_SIZE * GRID_SIZE * 4 * 256 * s->nb_frames * s->threshold_multiplier / 16);
 
     return 0;
 }
