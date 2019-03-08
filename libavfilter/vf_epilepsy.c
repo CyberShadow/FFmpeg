@@ -349,7 +349,7 @@ static int config_input(AVFilterLink *inlink)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
-    int this_badness, current_badness, new_badness, i;
+    int this_badness, current_badness, new_badness, i, res;
     EpilepsyFrame ef;
     AVFrame *src;
     float factor;
@@ -388,17 +388,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             /* just duplicate the frame */
             s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
         } else {
-            if (!av_frame_is_writable(s->last_frame_av)) {
-                src = av_frame_clone(out);
-                if (!src) {
-                    av_frame_free(&in);
-                    av_frame_free(&out);
-                    return AVERROR(ENOMEM);
-                }
-                av_frame_copy_props(src, s->last_frame_av);
-                av_frame_copy(src, s->last_frame_av);
-                av_frame_free(&s->last_frame_av);
-                s->last_frame_av = src;
+            res = av_frame_make_writable(s->last_frame_av);
+            if (res) {
+                av_frame_free(&in);
+                av_frame_free(&out);
+                return res;
             }
             blend_frame(s->last_frame_av, in, factor);
 
