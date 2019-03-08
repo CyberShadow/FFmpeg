@@ -468,7 +468,7 @@ static const AVFilterPad outputs[] = {
 
 AVFilter ff_vf_epilepsy = {
     .name          = "epilepsy",
-    .description   = NULL_IF_CONFIG_SMALL("Attempt to filter out epilepsy-inducing flashes."),
+    .description   = NULL_IF_CONFIG_SMALL("Attempt to filter out photosensitive epilepsy seizure-inducing flashes."),
     .priv_size     = sizeof(EpilepsyContext),
     .priv_class    = &epilepsy_class,
     .uninit        = uninit,
