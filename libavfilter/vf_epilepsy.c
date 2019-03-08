@@ -356,6 +356,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     int this_badness, new_badness;
     EpilepsyFrame ef;
     AVFrame *src;
+    float factor;
 
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
@@ -399,7 +400,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 av_frame_free(&s->last_frame_av);
                 s->last_frame_av = src;
             }
-            blend_frame(s->last_frame_av, in, s->blend_factor);
+            factor = (float)(s->badness_threshold - s->current_badness) / (new_badness - s->current_badness);
+            blend_frame(s->last_frame_av, in, factor);
 
             convert_frame(s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
