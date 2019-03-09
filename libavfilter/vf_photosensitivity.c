@@ -41,6 +41,7 @@ typedef struct PhotosensitivityContext {
     const AVClass *class;
 
     int nb_frames;
+    int skip;
     float threshold_multiplier;
 
     int badness_threshold;
@@ -61,6 +62,7 @@ static const AVOption photosensitivity_options[] = {
     { "f",         "set how many frames to use"                        ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=30}, 2, MAX_FRAMES, FLAGS },
     { "threshold", "set detection threshold factor (lower is stricter)",  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl= 1}, 0, FLT_MAX   , FLAGS },
     { "t"        , "set detection threshold factor (lower is stricter)",  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl= 1}, 0, FLT_MAX   , FLAGS },
+    { "skip"     , "set pixels to skip when sampling frames"           ,  OFFSET(skip                ), AV_OPT_TYPE_INT  , {.i64= 1}, 1, 1024      , FLAGS },
     { NULL }
 };
 
@@ -83,13 +85,14 @@ typedef struct ThreadData_convert_frame
 {
     AVFrame *in;
     PhotosensitivityFrame* out;
+    int skip;
 } ThreadData_convert_frame;
 
 #define NUM_CELLS (GRID_SIZE * GRID_SIZE)
 
 static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
-    int cell, gx, gy, x0, x1, y0, y1, x, y, c;
+    int cell, gx, gy, x0, x1, y0, y1, x, y, c, area;
     int sum[NUM_CHANNELS];
     const uint8_t *p;
 
@@ -98,7 +101,7 @@ static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
     const int slice_start = (NUM_CELLS * jobnr) / nb_jobs;
     const int slice_end = (NUM_CELLS * (jobnr+1)) / nb_jobs;
 
-    int width = td->in->width, height = td->in->height, linesize = td->in->linesize[0];
+    int width = td->in->width, height = td->in->height, linesize = td->in->linesize[0], skip = td->skip;
     const uint8_t *data = td->in->data[0];
 
     for (cell = slice_start; cell < slice_end; cell++) {
@@ -113,30 +116,34 @@ static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
         for (c = 0; c < NUM_CHANNELS; c++) {
             sum[c] = 0;
         }
-        for (y = y0; y < y1; y++) {
+        for (y = y0; y < y1; y += skip) {
             p = data + y * linesize + x0 * NUM_CHANNELS;
-            for (x = x0; x < x1; x++) {
+            for (x = x0; x < x1; x += skip) {
                 //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
-                sum[0] += *p++;
-                sum[1] += *p++;
-                sum[2] += *p++;
+                sum[0] += p[0];
+                sum[1] += p[1];
+                sum[2] += p[2];
+                p += NUM_CHANNELS * skip;
                 // TODO: variable size
             }
         }
+
+        area = ((y1 - y0) / skip) * ((x1 - x0) / skip);
         for (c = 0; c < NUM_CHANNELS; c++) {
             if (sum[c])
-                sum[c] /= (y1 - y0) * (x1 - x0);
+                sum[c] /= area;
             td->out->grid[gy][gx][c] = sum[c];
         }
     }
     return 0;
 }
 
-static void convert_frame(AVFilterContext *ctx, AVFrame *in, PhotosensitivityFrame* out)
+static void convert_frame(AVFilterContext *ctx, AVFrame *in, PhotosensitivityFrame* out, int skip)
 {
     ThreadData_convert_frame td;
     td.in = in;
     td.out = out;
+    td.skip = skip;
     ctx->internal->execute(ctx, convert_frame_partial, &td, NULL, FFMIN(NUM_CELLS, ff_filter_get_nb_threads(ctx)));
 }
 
@@ -223,7 +230,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         current_badness += i * s->history[(s->history_pos + i) % s->nb_frames];
     current_badness /= s->nb_frames;
 
-    convert_frame(ctx, in, &ef);
+    convert_frame(ctx, in, &ef, s->skip);
     this_badness = get_badness(&ef, &s->last_frame_e);
     new_badness = current_badness + this_badness;
     av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%3d%% - %s)                                                     \n",
@@ -250,7 +257,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             }
             blend_frame(ctx, s->last_frame_av, in, factor);
 
-            convert_frame(ctx, s->last_frame_av, &ef);
+            convert_frame(ctx, s->last_frame_av, &ef, s->skip);
             this_badness = get_badness(&ef, &s->last_frame_e);
             new_badness = current_badness + this_badness;
             av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%3d%%) factor=%5.3f                                                     \n",
