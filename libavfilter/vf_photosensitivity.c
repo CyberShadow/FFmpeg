@@ -128,7 +128,7 @@ static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
             }
         }
 
-        area = ((y1 - y0) / skip) * ((x1 - x0) / skip);
+        area = ((x1 - x0 + skip - 1) / skip) * ((y1 - y0 + skip - 1) / skip);
         for (c = 0; c < NUM_CHANNELS; c++) {
             if (area)
                 sum[c] /= area;
