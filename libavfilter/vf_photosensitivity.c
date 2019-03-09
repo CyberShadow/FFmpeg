@@ -85,12 +85,13 @@ typedef struct ThreadData_convert_frame
     PhotosensitivityFrame* out;
 } ThreadData_convert_frame;
 
-#define NUM_CELLS (NUM_CHANNELS * GRID_SIZE * GRID_SIZE)
+#define NUM_CELLS (GRID_SIZE * GRID_SIZE)
 
 static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
-    int cell, v, gx, gy, x0, x1, y0, y1, x, y, c, sum;
-    const uint8_t *row;
+    int cell, gx, gy, x0, x1, y0, y1, x, y, c;
+    int sum[NUM_CHANNELS];
+    const uint8_t *p;
 
     ThreadData_convert_frame *td = arg;
 
@@ -101,29 +102,32 @@ static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
     const uint8_t *data = td->in->data[0];
 
     for (cell = slice_start; cell < slice_end; cell++) {
-        v = cell;
-        gx = v % GRID_SIZE;
-        v /= GRID_SIZE;
-        gy = v % GRID_SIZE;
-        v /= GRID_SIZE;
-        c = v;
+        gx = cell % GRID_SIZE;
+        gy = cell / GRID_SIZE;
 
         x0 = width  *  gx    / GRID_SIZE;
         x1 = width  * (gx+1) / GRID_SIZE;
         y0 = height *  gy    / GRID_SIZE;
         y1 = height * (gy+1) / GRID_SIZE;
 
-        sum = 0;
+        for (c = 0; c < NUM_CHANNELS; c++) {
+            sum[c] = 0;
+        }
         for (y = y0; y < y1; y++) {
-            row = data + y * linesize;
+            p = data + y * linesize + x0 * NUM_CHANNELS;
             for (x = x0; x < x1; x++) {
                 //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
-                sum += row[x * NUM_CHANNELS + c]; // TODO: variable size
+                sum[0] += *p++;
+                sum[1] += *p++;
+                sum[2] += *p++;
+                // TODO: variable size
             }
         }
-        if (sum)
-            sum /= (y1 - y0) * (x1 - x0);
-        td->out->grid[gy][gx][c] = sum;
+        for (c = 0; c < NUM_CHANNELS; c++) {
+            if (sum[c])
+                sum[c] /= (y1 - y0) * (x1 - x0);
+            td->out->grid[gy][gx][c] = sum[c];
+        }
     }
     return 0;
 }
