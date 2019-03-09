@@ -31,6 +31,7 @@
 
 #define MAX_FRAMES 240
 #define GRID_SIZE 8
+#define NUM_CHANNELS 3
 
 typedef struct PhotosensitivityFrame {
     uint8_t grid[GRID_SIZE][GRID_SIZE][4];
@@ -83,7 +84,7 @@ static void convert_frame(AVFrame *in, PhotosensitivityFrame* out)
     int gx, gy, x0, x1, y0, y1, x, y, c, sum;
     const uint8_t *row;
 
-    for (c = 0; c < 3; c++) {
+    for (c = 0; c < NUM_CHANNELS; c++) {
         for (gy = 0; gy < GRID_SIZE; gy++) {
             y0 = in->height *  gy    / GRID_SIZE;
             y1 = in->height * (gy+1) / GRID_SIZE;
@@ -95,7 +96,7 @@ static void convert_frame(AVFrame *in, PhotosensitivityFrame* out)
                     row = in->data[0] + y * in->linesize[0];
                     for (x = x0; x < x1; x++) {
                         //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
-                        sum += row[x * 3 + c]; // TODO: variable size
+                        sum += row[x * NUM_CHANNELS + c]; // TODO: variable size
                     }
                 }
                 if (sum)
@@ -127,7 +128,7 @@ static int get_badness(PhotosensitivityFrame* a, PhotosensitivityFrame* b)
 {
     int badness, x, y, c;
     badness = 0;
-    for (c = 0; c < 3; c++) {
+    for (c = 0; c < NUM_CHANNELS; c++) {
         for (y = 0; y < GRID_SIZE; y++) {
             for (x = 0; x < GRID_SIZE; x++) {
                 badness += abs((int)a->grid[y][x][c] - (int)b->grid[y][x][c]);
