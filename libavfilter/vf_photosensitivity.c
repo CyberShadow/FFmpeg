@@ -131,27 +131,48 @@ static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
 static void convert_frame(AVFilterContext *ctx, AVFrame *in, PhotosensitivityFrame* out)
 {
     ThreadData_convert_frame td;
-
     td.in = in;
     td.out = out;
     ctx->internal->execute(ctx, convert_frame_partial, &td, NULL, FFMIN(NUM_CELLS, ff_filter_get_nb_threads(ctx)));
 }
 
-static void blend_frame(AVFrame *target, AVFrame *source, float factor)
+typedef struct ThreadData_blend_frame
+{
+    AVFrame *target;
+    AVFrame *source;
+    uint16_t s_mul;
+} ThreadData_blend_frame;
+
+static int blend_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
     int x, y;
     uint8_t *t, *s;
-    const uint16_t s_mul = (uint16_t)(factor * 0x100);
-    const uint16_t t_mul = 0x100 - s_mul;
 
-    for (y = 0; y < target->height; y++) {
-        t = target->data[0] + y * target->linesize[0];
-        s = source->data[0] + y * source->linesize[0];
-        for (x = 0; x < target->linesize[0]; x++) {
+    ThreadData_blend_frame *td = arg;
+    const uint16_t s_mul = td->s_mul;
+    const uint16_t t_mul = 0x100 - s_mul;
+    const int slice_start = (td->target->height * jobnr) / nb_jobs;
+    const int slice_end = (td->target->height * (jobnr+1)) / nb_jobs;
+    const int linesize = td->target->linesize[0];
+
+    for (y = slice_start; y < slice_end; y++) {
+        t = td->target->data[0] + y * td->target->linesize[0];
+        s = td->source->data[0] + y * td->source->linesize[0];
+        for (x = 0; x < linesize; x++) {
             *t = (*t * t_mul + *s * s_mul) >> 8;
             t++; s++;
         }
     }
+    return 0;
+}
+
+static void blend_frame(AVFilterContext *ctx, AVFrame *target, AVFrame *source, float factor)
+{
+    ThreadData_blend_frame td;
+    td.target = target;
+    td.source = source;
+    td.s_mul = (uint16_t)(factor * 0x100);
+    ctx->internal->execute(ctx, blend_frame_partial, &td, NULL, FFMIN(ctx->outputs[0]->h, ff_filter_get_nb_threads(ctx)));
 }
 
 static int get_badness(PhotosensitivityFrame* a, PhotosensitivityFrame* b)
@@ -223,7 +244,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 av_frame_free(&in);
                 return res;
             }
-            blend_frame(s->last_frame_av, in, factor);
+            blend_frame(ctx, s->last_frame_av, in, factor);
 
             convert_frame(ctx, s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
