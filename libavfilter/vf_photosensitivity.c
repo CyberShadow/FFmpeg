@@ -32,11 +32,11 @@
 #define MAX_FRAMES 240
 #define GRID_SIZE 8
 
-typedef struct EpilepsyFrame {
+typedef struct PhotosensitivityFrame {
     uint8_t grid[GRID_SIZE][GRID_SIZE][4];
-} EpilepsyFrame;
+} PhotosensitivityFrame;
 
-typedef struct EpilepsyContext {
+typedef struct PhotosensitivityContext {
     const AVClass *class;
 
     int nb_frames;
@@ -48,14 +48,14 @@ typedef struct EpilepsyContext {
     int history[MAX_FRAMES];
     int history_pos;
 
-    EpilepsyFrame last_frame_e;
+    PhotosensitivityFrame last_frame_e;
     AVFrame *last_frame_av;
-} EpilepsyContext;
+} PhotosensitivityContext;
 
-#define OFFSET(x) offsetof(EpilepsyContext, x)
+#define OFFSET(x) offsetof(PhotosensitivityContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
-static const AVOption epilepsy_options[] = {
+static const AVOption photosensitivity_options[] = {
     { "frames",    "set how many frames to use"                        ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=30}, 2, MAX_FRAMES, FLAGS },
     { "f",         "set how many frames to use"                        ,  OFFSET(nb_frames           ), AV_OPT_TYPE_INT  , {.i64=30}, 2, MAX_FRAMES, FLAGS },
     { "threshold", "set detection threshold factor (lower is stricter)",  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl= 1}, 0, FLT_MAX   , FLAGS },
@@ -63,7 +63,7 @@ static const AVOption epilepsy_options[] = {
     { NULL }
 };
 
-AVFILTER_DEFINE_CLASS(epilepsy);
+AVFILTER_DEFINE_CLASS(photosensitivity);
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -78,7 +78,7 @@ static int query_formats(AVFilterContext *ctx)
     return ff_set_common_formats(ctx, formats);
 }
 
-static void convert_frame(AVFrame *in, EpilepsyFrame* out)
+static void convert_frame(AVFrame *in, PhotosensitivityFrame* out)
 {
     int gx, gy, x0, x1, y0, y1, x, y, c, sum;
     const uint8_t *row;
@@ -123,7 +123,7 @@ static void blend_frame(AVFrame *target, AVFrame *source, float factor)
     }
 }
 
-static int get_badness(EpilepsyFrame* a, EpilepsyFrame* b)
+static int get_badness(PhotosensitivityFrame* a, PhotosensitivityFrame* b)
 {
     int badness, x, y, c;
     badness = 0;
@@ -143,7 +143,7 @@ static int config_input(AVFilterLink *inlink)
 {
     /* const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format); */
     AVFilterContext *ctx = inlink->dst;
-    EpilepsyContext *s = ctx->priv;
+    PhotosensitivityContext *s = ctx->priv;
 
     s->badness_threshold = (int)(GRID_SIZE * GRID_SIZE * 4 * 256 * s->nb_frames * s->threshold_multiplier / 128);
 
@@ -153,13 +153,13 @@ static int config_input(AVFilterLink *inlink)
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     int this_badness, current_badness, new_badness, i, res;
-    EpilepsyFrame ef;
+    PhotosensitivityFrame ef;
     AVFrame *src, *out;
     float factor;
 
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
-    EpilepsyContext *s = ctx->priv;
+    PhotosensitivityContext *s = ctx->priv;
 
     /* weighted moving average */
     current_badness = 0;
@@ -219,7 +219,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 static av_cold void uninit(AVFilterContext *ctx)
 {
-    EpilepsyContext *s = ctx->priv;
+    PhotosensitivityContext *s = ctx->priv;
 
     if (s->last_frame_av) {
         av_frame_free(&s->last_frame_av);
@@ -244,11 +244,11 @@ static const AVFilterPad outputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_epilepsy = {
-    .name          = "epilepsy",
+AVFilter ff_vf_photosensitivity = {
+    .name          = "photosensitivity",
     .description   = NULL_IF_CONFIG_SMALL("Attempt to filter out photosensitive epilepsy seizure-inducing flashes."),
-    .priv_size     = sizeof(EpilepsyContext),
-    .priv_class    = &epilepsy_class,
+    .priv_size     = sizeof(PhotosensitivityContext),
+    .priv_class    = &photosensitivity_class,
     .uninit        = uninit,
     .query_formats = query_formats,
     .inputs        = inputs,
