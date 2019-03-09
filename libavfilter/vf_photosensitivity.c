@@ -79,32 +79,62 @@ static int query_formats(AVFilterContext *ctx)
     return ff_set_common_formats(ctx, formats);
 }
 
-static void convert_frame(AVFrame *in, PhotosensitivityFrame* out)
+typedef struct ThreadData_convert_frame
 {
-    int gx, gy, x0, x1, y0, y1, x, y, c, sum;
+    AVFrame *in;
+    PhotosensitivityFrame* out;
+} ThreadData_convert_frame;
+
+#define NUM_CELLS (NUM_CHANNELS * GRID_SIZE * GRID_SIZE)
+
+static int convert_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    int cell, v, gx, gy, x0, x1, y0, y1, x, y, c, sum;
     const uint8_t *row;
 
-    for (c = 0; c < NUM_CHANNELS; c++) {
-        for (gy = 0; gy < GRID_SIZE; gy++) {
-            y0 = in->height *  gy    / GRID_SIZE;
-            y1 = in->height * (gy+1) / GRID_SIZE;
-            for (gx = 0; gx < GRID_SIZE; gx++) {
-                x0 = in->width *  gx    / GRID_SIZE;
-                x1 = in->width * (gx+1) / GRID_SIZE;
-                sum = 0;
-                for (y = y0; y < y1; y++) {
-                    row = in->data[0] + y * in->linesize[0];
-                    for (x = x0; x < x1; x++) {
-                        //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
-                        sum += row[x * NUM_CHANNELS + c]; // TODO: variable size
-                    }
-                }
-                if (sum)
-                    sum /= (y1 - y0) * (x1 - x0);
-                out->grid[gy][gx][c] = sum;
+    ThreadData_convert_frame *td = arg;
+
+    const int slice_start = (NUM_CELLS * jobnr) / nb_jobs;
+    const int slice_end = (NUM_CELLS * (jobnr+1)) / nb_jobs;
+
+    int width = td->in->width, height = td->in->height, linesize = td->in->linesize[0];
+    const uint8_t *data = td->in->data[0];
+
+    for (cell = slice_start; cell < slice_end; cell++) {
+        v = cell;
+        gx = v % GRID_SIZE;
+        v /= GRID_SIZE;
+        gy = v % GRID_SIZE;
+        v /= GRID_SIZE;
+        c = v;
+
+        x0 = width  *  gx    / GRID_SIZE;
+        x1 = width  * (gx+1) / GRID_SIZE;
+        y0 = height *  gy    / GRID_SIZE;
+        y1 = height * (gy+1) / GRID_SIZE;
+
+        sum = 0;
+        for (y = y0; y < y1; y++) {
+            row = data + y * linesize;
+            for (x = x0; x < x1; x++) {
+                //av_log(NULL, AV_LOG_VERBOSE, "%d %d %d : (%d,%d) (%d,%d) -> %d,%d | *%d\n", c, gx, gy, x0, y0, x1, y1, x, y, (int)row);
+                sum += row[x * NUM_CHANNELS + c]; // TODO: variable size
             }
         }
+        if (sum)
+            sum /= (y1 - y0) * (x1 - x0);
+        td->out->grid[gy][gx][c] = sum;
     }
+    return 0;
+}
+
+static void convert_frame(AVFilterContext *ctx, AVFrame *in, PhotosensitivityFrame* out)
+{
+    ThreadData_convert_frame td;
+
+    td.in = in;
+    td.out = out;
+    ctx->internal->execute(ctx, convert_frame_partial, &td, NULL, FFMIN(NUM_CELLS, ff_filter_get_nb_threads(ctx)));
 }
 
 static void blend_frame(AVFrame *target, AVFrame *source, float factor)
@@ -168,7 +198,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         current_badness += i * s->history[(s->history_pos + i) % s->nb_frames];
     current_badness /= s->nb_frames;
 
-    convert_frame(in, &ef);
+    convert_frame(ctx, in, &ef);
     this_badness = get_badness(&ef, &s->last_frame_e);
     new_badness = current_badness + this_badness;
     av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%3d%% - %s)                                                     \n",
@@ -195,7 +225,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             }
             blend_frame(s->last_frame_av, in, factor);
 
-            convert_frame(s->last_frame_av, &ef);
+            convert_frame(ctx, s->last_frame_av, &ef);
             this_badness = get_badness(&ef, &s->last_frame_e);
             new_badness = current_badness + this_badness;
             av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%3d%%) factor=%5.3f                                                     \n",
