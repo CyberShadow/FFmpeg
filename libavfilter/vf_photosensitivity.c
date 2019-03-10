@@ -157,43 +157,6 @@ static int config_input(AVFilterLink *inlink)
     return 0;
 }
 
-#if 0
-    this_badness = get_badness(&ef, &s->last_frame_e);
-    new_badness = current_badness + this_badness;
-    av_log(s, AV_LOG_VERBOSE, "badness: %6d -> %6d / %6d (%3d%% - %s)                                                     \n",
-        current_badness, new_badness, s->badness_threshold,
-        100 * new_badness / s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
-
-    if (new_badness < s->badness_threshold || !s->last_frame_av || s->bypass) {
-        factor = 1; /* for metadata */
-        s->last_frame_e = ef;
-        s->history[s->history_pos] = this_badness;
-    } else {
-        factor = (float)(s->badness_threshold - current_badness) / (new_badness - current_badness);
-        if (factor <= 0) {
-            /* just duplicate the frame */
-            s->history[s->history_pos] = 0; /* frame was duplicated, thus, delta is zero */
-        } else {
-            res = av_frame_make_writable(s->last_frame_av);
-            if (res) {
-                av_frame_free(&in);
-                return res;
-            }
-            blend_frame(ctx, s->last_frame_av, in, factor);
-
-            convert_frame(ctx, s->last_frame_av, &ef, s->skip);
-            this_badness = get_badness(&ef, &s->last_frame_e);
-            new_badness = current_badness + this_badness;
-            av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%3d%%) factor=%5.3f                                                     \n",
-                current_badness, new_badness, s->badness_threshold,
-                100 * new_badness / s->badness_threshold, factor);
-            s->last_frame_e = ef;
-            s->history[s->history_pos] = this_badness;
-        }
-        src = s->last_frame_av;
-    }
-#endif
-
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFrame *out;
