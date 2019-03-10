@@ -219,6 +219,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     PhotosensitivityFrame ef;
     AVFrame *src, *out;
     float factor;
+    AVDictionary **metadata;
 
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
@@ -238,6 +239,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         100 * new_badness / s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
     if (new_badness < s->badness_threshold || !s->last_frame_av) {
+        factor = 1; /* for metadata */
         if (s->last_frame_av) {
             av_frame_free(&s->last_frame_av);
         }
@@ -276,6 +278,16 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return AVERROR(ENOMEM);
     }
     av_frame_copy_props(out, in);
+    metadata = &out->metadata;
+    if (metadata) {
+        char value[128];
+
+        snprintf(value, sizeof(value), "%f", (float)new_badness / s->badness_threshold);
+        av_dict_set(metadata, "lavfi.photosensitivity.badness", value, 0);
+
+        snprintf(value, sizeof(value), "%f", factor);
+        av_dict_set(metadata, "lavfi.photosensitivity.factor", value, 0);
+    }
     av_frame_copy(out, src);
     return ff_filter_frame(outlink, out);
 }
