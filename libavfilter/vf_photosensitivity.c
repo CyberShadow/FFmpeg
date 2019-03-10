@@ -43,6 +43,7 @@ typedef struct PhotosensitivityContext {
     int nb_frames;
     int skip;
     float threshold_multiplier;
+    int bypass;
 
     int badness_threshold;
 
@@ -63,6 +64,7 @@ static const AVOption photosensitivity_options[] = {
     { "threshold", "set detection threshold factor (lower is stricter)",  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl= 1}, 0, FLT_MAX   , FLAGS },
     { "t"        , "set detection threshold factor (lower is stricter)",  OFFSET(threshold_multiplier), AV_OPT_TYPE_FLOAT, {.dbl= 1}, 0, FLT_MAX   , FLAGS },
     { "skip"     , "set pixels to skip when sampling frames"           ,  OFFSET(skip                ), AV_OPT_TYPE_INT  , {.i64= 1}, 1, 1024      , FLAGS },
+    { "bypass"   , "leave frames unchanged"                            ,  OFFSET(bypass              ), AV_OPT_TYPE_BOOL , {.i64= 0}, 0, 1         , FLAGS },
     { NULL }
 };
 
@@ -238,7 +240,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         current_badness, new_badness, s->badness_threshold,
         100 * new_badness / s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
-    if (new_badness < s->badness_threshold || !s->last_frame_av) {
+    if (new_badness < s->badness_threshold || !s->last_frame_av || s->bypass) {
         factor = 1; /* for metadata */
         if (s->last_frame_av) {
             av_frame_free(&s->last_frame_av);
