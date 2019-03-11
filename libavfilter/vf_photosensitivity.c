@@ -217,7 +217,7 @@ static int config_input(AVFilterLink *inlink)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
-    int this_badness, current_badness, new_badness, i, res;
+    int this_badness, current_badness, fixed_badness, new_badness, i, res;
     PhotosensitivityFrame ef;
     AVFrame *src, *out;
     float factor;
@@ -240,6 +240,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         current_badness, new_badness, s->badness_threshold,
         100 * new_badness / s->badness_threshold, new_badness < s->badness_threshold ? "OK" : "EXCEEDED");
 
+    fixed_badness = new_badness;
     if (new_badness < s->badness_threshold || !s->last_frame_av || s->bypass) {
         factor = 1; /* for metadata */
         if (s->last_frame_av) {
@@ -263,9 +264,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
             convert_frame(ctx, s->last_frame_av, &ef, s->skip);
             this_badness = get_badness(&ef, &s->last_frame_e);
-            new_badness = current_badness + this_badness;
+            fixed_badness = current_badness + this_badness;
             av_log(s, AV_LOG_VERBOSE, "  fixed: %6d -> %6d / %6d (%3d%%) factor=%5.3f                                                     \n",
-                current_badness, new_badness, s->badness_threshold,
+                current_badness, fixed_badness, s->badness_threshold,
                 100 * new_badness / s->badness_threshold, factor);
             s->last_frame_e = ef;
             s->history[s->history_pos] = this_badness;
@@ -286,6 +287,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
         snprintf(value, sizeof(value), "%f", (float)new_badness / s->badness_threshold);
         av_dict_set(metadata, "lavfi.photosensitivity.badness", value, 0);
+
+        snprintf(value, sizeof(value), "%f", (float)fixed_badness / s->badness_threshold);
+        av_dict_set(metadata, "lavfi.photosensitivity.fixed-badness", value, 0);
 
         snprintf(value, sizeof(value), "%f", factor);
         av_dict_set(metadata, "lavfi.photosensitivity.factor", value, 0);
