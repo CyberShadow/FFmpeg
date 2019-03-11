@@ -291,6 +291,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         snprintf(value, sizeof(value), "%f", (float)fixed_badness / s->badness_threshold);
         av_dict_set(metadata, "lavfi.photosensitivity.fixed-badness", value, 0);
 
+        snprintf(value, sizeof(value), "%f", (float)this_badness / s->badness_threshold);
+        av_dict_set(metadata, "lavfi.photosensitivity.frame-badness", value, 0);
+
         snprintf(value, sizeof(value), "%f", factor);
         av_dict_set(metadata, "lavfi.photosensitivity.factor", value, 0);
     }
