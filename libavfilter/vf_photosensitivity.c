@@ -116,6 +116,7 @@ static int process_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
             current_badness /= s->nb_frames;
             new_badness = current_badness + this_badness;
 
+#ifndef VISUALIZE
             if (new_badness < s->badness_threshold || !s->last_frame || s->bypass) {
                 for (c = 0; c < NUM_CHANNELS; c++)
                     p_out[c] = p_in[c];
@@ -136,6 +137,10 @@ static int process_frame_partial(AVFilterContext *ctx, void *arg, int jobnr, int
                     /* new_badness = current_badness + this_badness; */
                 }
             }
+#else
+            p_out[0] = current_badness > s->badness_threshold ? 255 : 0;
+            p_out[1] = p_out[2] = FFMIN(255, 255 * current_badness / (s->badness_threshold *  4));
+#endif
             s->history[s->history_pos][p] = this_badness;
 
             p++;
@@ -190,7 +195,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         FFMIN(ctx->outputs[0]->h, ff_filter_get_nb_threads(ctx)));
 
     av_frame_unref(s->last_frame);
+#ifndef VISUALIZE
     av_frame_ref(s->last_frame, out);
+#else
+    av_frame_ref(s->last_frame, in);
+#endif
     s->history_pos = (s->history_pos + 1) % s->nb_frames;
 
     return ff_filter_frame(outlink, out);
