@@ -152,7 +152,7 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     PhotosensitivityContext *s = ctx->priv;
 
-    s->badness_threshold = (int)(4 * 256 * s->nb_frames * s->threshold_multiplier / 64);
+    s->badness_threshold = (int)(4 * 256 * s->nb_frames * s->threshold_multiplier / 32);
 
     return 0;
 }
